@@ -1,0 +1,389 @@
+---
+title: "parkinson"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# library imports
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(ggpubr)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r open the file}
+setwd("/Users/songyujean/Desktop")
+getwd()
+df <- read.csv("parkinsons.csv")
+```
+
+```{r gender_transformation}
+
+#gender transformation;  F= 0 , M = 1 
+df[,3][df[,3] == "F"] <- 0 
+df[,3][df[,3] == "M"] <- 1
+df[,3] <- as.numeric(df[,3])
+```
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pca & GNM}
+disease.pca <- prcomp(df[,42:ncol(df)], center = T, scale = T)
+disease.pca$x[,1]
+summary(disease.pca)
+
+#c(rep(1, 80), rep(0,50))
+# 0 = non-disease, 1 = have a disease 
+plot(x= disease.pca$x[,1], y = disease.pca$x[,2], col = factor(c(rep(1, 80), rep(0,50))))
+hist(disease.pca$x[1:80,1])
+hist(disease.pca$x[81:130,1])
+
+
+# Gauissan Naive Bayes
+
+
+# likelihood = assuming parkinsons positive probability
+# posterior = prior*likelihood
+
+# prior and likelihood - need to find parkinsons patients or not 
+
+set.seed(123)
+
+dt <- sample(nrow(new_df), nrow(new_df)*.7)
+train <- new_df[dt,]
+nrow(train)
+
+test <- new_df[-dt,] #-dt = excluding train dt
+
+train.pca <- disease.pca$x[dt,1:2]
+test.pca <- disease.pca$x[-dt,1:2]
+
+
+# prior = whether if it's parkinsons or not 
+prior_patient <- sum(train$Parkinsons)/nrow(train)
+prior_healthy <- 1 - prior_patient
+
+train$Parkinsons == 1
+train.pca[train$Parkinsons == 1,]
+
+mean_patient <- apply(train.pca[train$Parkinsons == 1,],2, mean)
+#      PC1        PC2 
+# 0.4797657 -0.1482355 
+
+mean_healthy <- apply(train.pca[train$Parkinsons == 0,],2, mean)
+#       PC1        PC2 
+# -0.8764270  0.3222133 
+
+cov_patient <- cov(train.pca[train$Parkinsons == 1,])
+cov_healthy <- cov(train.pca[train$Parkinsons == 0,])
+
+# inference 
+library(mvtnorm)
+
+patient_likelihood <- dmvnorm(x = test.pca, mean = mean_patient, sigma = cov_patient)
+healthy_likelihood <- dmvnorm(x = test.pca, mean = mean_healthy, sigma = cov_healthy)
+
+# posterior 
+patient_posterior <- patient_likelihood*prior_patient
+healthy_posterior <- healthy_likelihood*prior_healthy
+
+# argmax
+patient_posterior > healthy_posterior
+
+####### GNB Accuracy #######
+
+# train GNB accuracy
+print(mean(train['Parkinsons'] == (patient_posterior > healthy_posterior)))
+# test GNB accuracy
+print(mean(test['Parkinsons'] == (patient_posterior > healthy_posterior)))
+
+
+
+
+```
+
+
+
+```{r ggplot_tutorial}
+
+library(ggpubr)
+library(ggsci)
+# make sure to reference ggplot2 cheatsheet
+# input has to be a data frame
+# define what will be plotted in aes (has to be colnames of the data frame)
+data(iris)
+ggplot(data = iris, aes(x = Sepal.Length, y = Sepal.Width, color = Species)) +
+  geom_point() +
+  theme_bw()
+
+for(i in c(1,2,3)){
+  p <- ggplot(data = iris, aes(x = Species, y = Sepal.Width, color = Species)) + # color = Species
+  geom_boxplot() +
+  scale_color_jco() +
+  scale_fill_jco() + 
+  geom_jitter(aes(color = Species), width = 0.2, alpha = 0.5) +
+  theme_bw()
+  
+  print(p)
+}
+
+# how to print 
+p <- ggplot(data = iris, aes_string(x = 'Species', y = 'Sepal.Width', color = 'Species')) + # color = Species
+  geom_violin() +
+  scale_color_jco() +
+  scale_fill_jco() + 
+  geom_jitter(aes_string(color = 'Species'), width = 0.2, alpha = 0.5) +
+  theme_bw()
+print(p)
+```
+
+```{r univariate_comparison}
+p.values <- c()
+#plot for speech action between patients and none
+for (i in 42:ncol(df)) {
+  park <- df[1:80,i]
+  none <- df[81:130,i]
+  
+  t.test.result <- t.test(park, none)
+  p.values <- c(p.values, t.test.result$p.value)
+  
+  boxplot(park, none, vertical = TRUE, names = c("Parkinson Patients", "Healthy Individuals"), col = "lightblue", main = colnames(df)[i])
+}
+p.values 
+#6th column from last(Duration of unvoiced stops) -> implies something?
+```
+
+
+```{r}
+
+
+```
+
+Assignment:
+1. Calculate adjusted p-values with Bonferroni correction and Benjamini-Hochberg correction.
+    # use p.adjust() function
+2. Produce boxplots with ggplot2
+3. Display statistical significance with stars on boxplot
+    # ggplot
+    
+```{r ggplot - adjusting p-values}
+
+#adjust p-values
+
+#Bonferroni correction 
+bon.p.values <- p.adjust(p.values, method = "bonferroni", n = length(p.values))
+bon.p.values
+
+#Benjamini-Hochberg correction
+bh.p.values <- p.adjust(p.values, method = "BH", n = length(p.values))
+bh.p.values 
+```
+
+```{python - new parkinson file}
+import pandas as pd
+import csv
+import sys
+
+new_parkinson = pd.read_csv("parkinsons.csv", encoding = 'UTF-8')
+onset = new_parkinson["Clinical information.1.Age of disease onset (years)"]
+
+new_parkinson.loc[onset > 0, "Division"] = "Patient"
+
+new_parkinson.loc[onset.isnull(), "Division"] = "Healthy"
+
+new_parkinson.to_csv("new_parkinson.csv")
+
+```
+
+
+```{r ggplot - box plot}
+library(ggpubr)
+library(ggsci)
+
+# open the file with new added column 'Division'
+new_df <- read.csv("new_parkinson.csv")
+
+# need to change the name for y
+for (i in 42:(ncol(new_df)-1)) {
+  p <- ggplot(new_df, aes(x = Division, y = new_df[,i], fill = Division)) + 
+  geom_boxplot() +
+  scale_color_jco() +
+  scale_fill_jco() + 
+  ylab(colnames(new_df)[i]) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_compare_means(label = "p.signif", method = "t.test") #label - p.signif -> shows the significance level 
+  print(p)
+} 
+
+```
+```{r Logistic Regression}
+
+new_df['Parkinsons'] <- c(rep(1,80), rep(0,50))
+
+model <- glm(Parkinsons ~ ., family = binomial(link='logit'), data = new_df[,c(42:65,67)]) #parkinsons인지아닌지
+
+summary(model)
+colnames(new_df)[42]
+mean(new_df['Parkinsons'] == (predict(model, data = new_df[,42:65], type = 'response') > 0.5)) #sigmoid -> can map values (0,1)
+
+```
+1. Shuffle Data
+2. Train Test Split (7:3)
+3. Train on train data / Test on test data
+4. Predict With Individual Features - 162 line -> for loop
+
+```{r}
+
+
+```
+
+
+```{r - training and testing}
+
+#train test split (7:3)
+set.seed(123)
+
+dt <- sample(nrow(new_df), nrow(new_df)*.7)
+train <- new_df[dt,]
+nrow(train)
+
+test <- new_df[-dt,] #-dt = train한 dt except 
+
+for (i in 42: (ncol(new_df)-2)) {
+  individual_model <- glm(formula(paste('Parkinsons ~', colnames(new_df[i]), sep = '')), data = train[,c(42:65,67)], family = binomial(link='logit'))
+  train_prediction <- predict(individual_model, train[,42:65], type = 'response')
+  test_prediction <- predict(individual_model, test[,42:65], type = 'response')
+  
+  print(colnames(new_df[i]),)
+  # train accuracy
+  print(mean(train['Parkinsons'] == (train_prediction > 0.5)))
+  # test accuracy
+  print(mean(test['Parkinsons'] == (test_prediction > 0.5)))
+  # baseline accuracy is 80 / 130 (61.5%)
+  # print(predict(individual_model, data = new_df[,42:65]))
+}
+
+
+model <- glm(formula("Parkinsons ~ ."), family = binomial(link='logit'), data = new_df[,c(42:65,67)])
+test_prediction <- predict(model, test[,42:65], type = 'response')
+print(mean(test['Parkinsons'] == (test_prediction > 0.5)))
+# [1] 0.8205128
+
+```
+
+```{r - p-values in data frame}
+
+df <- read.csv("parkinsons.csv")
+
+p.values <- c()
+#plot for speech action between patients and none
+for (i in 42:ncol(df)) {
+  park <- df[1:80,i]
+  none <- df[81:130,i]
+  
+  t.test.result <- t.test(park, none)
+  p.values <- c(p.values, t.test.result$p.value)
+}
+
+# rbind, cbind, rbind.data.frame, cbind.data.frame
+p.values.df <- cbind.data.frame(p.values, colnames(df)[42:ncol(df)])
+p.values.df
+
+# add column of univariate logistic regression 
+new_df['Parkinsons'] <- c(rep(1,80), rep(0,50))
+
+summary(model)
+
+uni.p <- c()
+for (i in 1:24) {
+  model <- glm(formula(paste('Parkinsons ~', colnames(new_df)[i+41], sep = '')), data = new_df[,c(42:65,67)], family = "binomial") 
+  # whether if it's parkinsons patient or not
+  
+  # extract p-values
+    new.uni.p <- coef(summary(model))[,4][2]
+    uni.p <- c(uni.p, new.uni.p)
+}
+
+uni.glm.df <- cbind.data.frame(uni.p, colnames(new_df)[42:65])
+uni.glm.df
+
+
+# add column of multivariate logistic regression 
+model <- glm(Parkinsons ~ ., family = binomial(link='logit'), data = new_df[,c(42:65,67)])
+
+# extract p-values
+multi.p <-coef(summary(model))[,4][2:25]
+multi.p
+
+multi.uni.p.df <- cbind.data.frame(multi.p, uni.glm.df)
+multi.uni.p.df
+
+
+# train test split between p-values 
+
+set.seed(123) # randomization 
+
+multi.uni.p_sample <- sample.int(n = nrow(multi.uni.p.df), size = floor(.70*nrow(multi.uni.p.df)), replace = F)
+multi.uni.p.df_train <- multi.uni.p.df[multi.uni.p_sample, ]
+multi.uni.p.df_test <- uni.glm.df[-multi.uni.p_sample, ]
+
+prob <- model %>% predict(train, type = "response")
+predicted_disease <- ifelse(prob > 0.5, "PD", "Healthy")
+
+# S-curve for univariate logistic regression
+
+new_df2<- new_df[,c(42:65,67)]
+
+plot_list <- list() # new empty list 
+source("http://peterhaschke.com/Code/multiplot.R")
+
+for (i in 1:24) {
+  plot <- ggplot(new_df2, aes_string(colnames(new_df2)[i], "Parkinsons")) + geom_point() +
+        stat_smooth(method="glm", color="green", se=FALSE,
+                  method.args = list(family=binomial))
+  
+  plot_list[[i]] <- plot
+}
+
+multiplot(plotlist = plot_list, cols = 6)
+
+
+
+```
+
+```{r - sum of the p-values}
+
+library(dplyr)
+result.df <- cbind.data.frame(p.values.df[,1],multi.uni.p.df[,1],multi.uni.p.df[,2])
+colnames(result.df) <- c('T-test p-value', 'multi.p', 'uni.p')
+result_df <-result.df %>%
+  mutate(Sum = rowSums(.))
+result.df <- cbind.data.frame(multi.uni.p.df[,3],result_df)
+
+# convert columns into row names 
+result <- result.df[,-1]
+rownames(result) <- result.df[,1]
+write.csv(result, file = 'p_result_unsorted.csv')
+result <- result[order(result$Sum), ]
+result <- round(result, digits = 6)
+
+
+
+
+# convert to png
+library(gridExtra)
+png("pvalues",height = 50*nrow(result), width = 400*ncol(result))
+grid.table(result)
+dev.off()
+```
+
